@@ -7,19 +7,29 @@ SCRIPT_VERSION="2024.09.25"
 ###############################################################################
 # Variables
 ###############################################################################
-SCRIPT_SPAN=240         # How long the whole script should take. Default=240
-TD_INTERVAL=30          # How often thread dumps should be taken. Default=30
+SCRIPT_SPAN=20         # How long the whole script should take. Default=240
+TD_INTERVAL=10          # How often thread dumps should be taken. Default=30
 TOP_INTERVAL=10         # How often top data should be taken. Default=10
 TOP_DASH_H_INTERVAL=5    # How often top dash H data should be taken. Default=5
 VMSTAT_INTERVAL=5       # How often vmstat data should be taken. Default=5
 NFSIO_INTERVAL=5        # How often nfsiostat data should be taken.  Default = 5
 NFSSTAT_INTERVAL=5      # How often nfsstat data should be taken. Default =5
+CURRENT_DIR=$(pwd)
+##############################################################################
+#  check user authority
+# Collect the user currently executing the script
+echo $(date) ">> Validating current user......." 
+boomi_user=$(ps -ef | grep '[j]ava' | awk '{print $1}')
+current_user=$(whoami)
+if [[ "$boomi_user" == "$current_user" ]]; then
+    echo "Found user ($current_user) is running the Boomi Application... continuing..."
+else
+    echo -e "\033[1;31m The current user ($current_user) is different from the user running Java processes ($boomi_user).\033[0m "
+    echo "Please switch to the user who owns boomi application to proceed. Exiting..."
+    exit 1  # Exit the script with a non-zero status
+fi
 
-echo -e "\033[1m***********************************************************************\033[0m"
-echo -e "\033[1;31mPlease run the script with the owner of the boomi file system, e.g., boomi\033[0m"
-echo -e "\033[1m#######################################################################\033[0m"
-echo -e "\033[1m#######################################################################\033[0m"
-echo ""
+
 echo -e "\033[1;34mPlease modify the following variables to match your needs\033[0m"
 echo -e "\033[1;34mAll the script variables are in seconds.\033[0m"
 echo -e "\033[1m#######################################################################\033[0m"
@@ -29,8 +39,11 @@ echo -e "\033[1;34mTD_INTERVAL = How often thread dumps should be taken.\033[0m"
 echo -e "\033[1;34mTOP_INTERVAL = How often top data should be taken.\033[0m"
 echo -e "\033[1;34mTOP_DASH_H_INTEVAL = How often top dash H data should be taken.\033[0m"
 echo -e "\033[1;34mVMSTAT_INTERVAL = How often vmstat data should be taken.\033[0m"
-
-##############################################################################
+echo -e "\033[1;34mNFSIO_INTERVAL = Determines how often nfsiostats is run.\033[0m"
+echo -e "\033[1;34mNFSSTAT_INTERVAL = Determines how often nfsstat is run.\033[0m"
+echo ""
+echo ""
+############################################################################################
 # Define the term to search for in the mounted filesystems
 SEARCH_TERM="boomi"
 USER_DIR=""
@@ -83,7 +96,40 @@ if [ -z "$USER_DIR" ]; then
 else
     echo "Final selected Boomi directory: $USER_DIR"
 fi
+###########################################################################
+# nfsiostat function
+############################################################################
+NFSIO=$((SCRIPT_SPAN / NFSIO_INTERVAL))
+log_nfsiostat() {
+        for (( i=1; i<=NFSIO; i++ ))
+        do
+        # Log the current timestamp to the output file
+        echo "Timestamp: $(date)" >> "nfsiostat.out"
 
+        # Run nfsiostat and append its output
+        nfsiostat  >> "nfsiostat.out"
+        sleep $NFSIO_INTERVAL
+
+    done
+}
+##############################################################################
+
+###########################################################################
+# nfsstat function
+############################################################################
+NFSSTAT=$((SCRIPT_SPAN / NFSSTAT_INTERVAL))
+log_nfsstat() {
+        for (( i=1; i<=NFSSTAT; i++ ))
+        do
+        # Log the current timestamp to the output file
+        echo "Timestamp: $(date)" >> "nfsstat.out"
+
+        # Run nfsiostat and append its output
+        nfsstat -c  >> "nfsstat.out"
+        sleep $NFSSTAT_INTERVAL
+
+    done
+}
 ##############################################################################
 # Check JAVA_HOME and Set Java Home
 ##############################################################################
@@ -111,6 +157,7 @@ if [ -z "$java_pids" ]; then
 else
     echo "Java Process IDs found:"
     echo "-------------------------------------"
+    echo $java_pids
 
     # Initialize a counter
     count=1
@@ -200,14 +247,9 @@ echo $(date) ">> TD_INTERVAL = $TD_INTERVAL" | tee -a screen.out
 echo $(date) ">> TOP_INTERVAL = $TOP_INTERVAL" | tee -a screen.out
 echo $(date) ">> TOP_DASH_H_INTERVAL = $TOP_DASH_H_INTERVAL" | tee -a screen.out
 echo $(date) ">> VMSTAT_INTERVAL = $VMSTAT_INTERVAL" | tee -a screen.out
-echo $(date) ">> NFSIO_INTERVAL = $NFSI_INTERVAL " | tee -a screen.out
-echo $(date) ">>  NFSSTAT_INTERVAL = $NFSSTAT_INTEVAL" | tee -a screen.out
+echo $(date) ">> NFSIO_INTERVAL = $NFSIO_INTERVAL " | tee -a screen.out
+echo $(date) ">>  NFSSTAT_INTERVAL = $NFSSTAT_INTERVAL" | tee -a screen.out
 
-# Collect the user currently executing the script
-echo $(date) ">> Collecting user authority data..." | tee -a screen.out
-date > whoami.out
-whoami >> whoami.out 2>&1
-echo $(date) ">> Collection of user authority data complete." | tee -a screen.out
 echo $(date) ">> Collecting a ps snapshot..." | tee -a screen.out
     ps -ef | grep java >> ps.out
 # Create some of the output files with a blank line at top
@@ -215,12 +257,13 @@ echo $(date) ">> Creating output files..." | tee -a screen.out
 echo > vmstat.out
 echo > top.out
 echo > nfsiostat.out
-echo > nfsstat_client.out
+echo > nfsstat.out
 echo $(date) ">> Output files created:" | tee -a screen.out
 echo $(date) ">>      vmstat.out" | tee -a screen.out
 echo $(date) ">>      top.out" | tee -a screen.out
 echo $(date) ">>      nfsiostat.out" | tee -a screen.out
-echo $(date) ">>      nfsstat_client.out" | tee -a screen.out
+echo $(date) ">>      nfsstat.out" | tee -a screen.out
+
 for i in $*
 do
         echo > topdashH.$selected_pids.out
@@ -261,17 +304,13 @@ date >> vmstat.out
 vmstat $VMSTAT_INTERVAL `expr $SCRIPT_SPAN / $VMSTAT_INTERVAL + 1` >> vmstat.out 2>&1 &
 echo $(date) ">> Collection of vmstat data started." | tee -a screen.out
 
-# Start collection of nfs data
-echo $(date) " >> Starting collection of nfsio data...." | tee -a screen.out
-date >> nfsiostat.out
-nfsiostat $NFSIO_INTERVAL $(($SCRIPT_SPAN / $NFSIO_INTERVAL + 1)) >> nfsiostat.out 2>&1 &
-echo $(date) ">> Collection of nfsiostat data started." | tee -a screen.out
 
-echo $(date) ">> Starting collection of nfsstat data..." | tee -a screen.out
-date >> nfsstat_client.out
-nfsstat  $NFSSTAT_INTERVAL 'expr $SCRIPT_SPAN / $NFSSTAT_INTERVAL + 1' -c >> nfsstat_client.out 2>&1 &
-echo $(date) ">> Collection of nfsstat data started.." | tee -a screen.out
 
+echo $(date) ">> Starting Collection of nfsiostat..." | tee -a screen.out
+log_nfsiostat &
+
+echo $(date) ">> Starting Collection of nfsstat ... " | tee -a screen.out
+log_nfsstat &
 
 
 ################################################################################
@@ -321,7 +360,6 @@ for pid in "${selected_pids[@]}"
 do
         timestamp=$(date +"%Y%m%d_%H%M%S")
     output_file="threaddump_${pid}_${timestamp}.txt"
-    echo $output_file
     $JAVA_HOME/bin/jstack -l "$pid" >> "$output_file" 2>&1
     echo $(date) ">> Collected the final thread dump for PID $pid . Output saved to $output_file." | tee -a screen.out
 done
@@ -352,7 +390,7 @@ sleep 5
 echo $(date) ">> Compressing output files into boomPerf_RESULTS.tar.gz" | tee -a screen.out
 
 # Build a string to contain all the file names
-FILES_STRING="nfsstat_client.out nfsiostat.out vmstat.out ps.out top.out screen.out dmesg.out whoami.out df-hk.out threaddump_*.txt topdashH*.out"
+FILES_STRING="nfsstat_client.out nfsiostat.out vmstat.out ps.out top.out screen.out dmesg.out df-hk.out threaddump_*.txt topdashH*.out"
 for i in $*
 do
         TEMP_STRING=" topdashH.$selected_pids.out"
@@ -371,5 +409,5 @@ rm $FILES_STRING
 echo $(date) ">> Clean up complete."
 echo $(date) ">> boomPerf.sh script complete."
 echo
-echo $(date) ">> Output files are contained within ---->   boomiPerf_$ct-RESULTS.tar.gz.   <----"
+echo $(date) ">> Output files are contained within ---->  ${current_dir}/boomiPerf_$ct-RESULTS.tar.gz.   <----"
 ################################################################################
