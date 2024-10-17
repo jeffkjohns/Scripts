@@ -10,6 +10,8 @@ TD_INTERVAL=30          # How often thread dumps should be taken. Default=30
 TOP_INTERVAL=10         # How often top data should be taken. Default=10
 TOP_DASH_H_INTERVAL=5    # How often top dash H data should be taken. Default=5
 VMSTAT_INTERVAL=5       # How often vmstat data should be taken. Default=5
+NFSIO_INTERVAL=5        # How often nfsiostat data should be taken.  Default = 5
+NFSSTAT_INTERVAL=5      # How often nfsstat data should be taken. Default =5
    ```
 ## Executing the script:
 
@@ -34,6 +36,8 @@ dmesg.out
 whoami.out
 df-hk.out
 threaddump_PID_timstamp.txt
+nfsstat.out
+nfsiostat.out
 ```
 
 
